@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# ML models (lớn, tự train lại được)
+ml/models/*.pkl
+ml/models/master_scale.json
+
+# Generated data (tự gen lại được)
+data/output/
+
+# Credentials
+*.txt
+Neo4j-*.txt
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
