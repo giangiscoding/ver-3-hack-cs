@@ -80,6 +80,16 @@ LOAD_BY_REL = {
     "INTERNAL_TXN": LOAD_INTERNAL_TXN, "TRADE": LOAD_TRADE,
 }
 
+# Gắn kết quả chấm điểm vào Company node (cho graph view: tô màu theo rating)
+SET_COMPANY_SCORES = """
+UNWIND $rows AS row
+MATCH (c:Company {mst: row.mst})
+SET c.final_score = row.final_score,
+    c.rating      = row.rating,
+    c.cluster     = row.cluster,
+    c.dri         = row.dri
+"""
+
 # ── Phát hiện gian lận (theo MST) ─────────────────────────────────────────────
 
 # Pattern 1: Shadow controller — một chủ sở hữu nắm chéo ≥2 DN (gồm DN đang xét)

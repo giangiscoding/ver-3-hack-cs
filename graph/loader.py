@@ -3,6 +3,7 @@ Loader — đọc data/output/graph.json và nạp vào Neo4j.
 
 Chạy: python -m graph.loader            (nạp toàn bộ)
       python -m graph.loader --clear    (xoá sạch rồi nạp lại)
+      python -m graph.loader --scores   (nạp + chấm điểm gắn vào Company node)
 
 Cần Neo4j đang chạy + biến môi trường NEO4J_* (xem graph/connection.py).
 """
@@ -64,6 +65,29 @@ def load(clear: bool = False) -> dict:
     return {"companies": len(companies), "owners": len(owners), "edges": edge_counts}
 
 
+def enrich_scores() -> int:
+    """
+    Chấm điểm toàn bộ DN (score) rồi gắn final_score/rating/cluster/dri vào Company node.
+    Dùng cho graph view: tô màu node theo rating, hiện điểm khi click.
+    """
+    from data import list_msts, load_company
+    from scorer import score
+
+    rows = []
+    for mst in list_msts():
+        r = score(load_company(mst))
+        rows.append({
+            "mst":         r.mst,
+            "final_score": r.final_score,
+            "rating":      r.rating,
+            "cluster":     r.cluster,
+            "dri":         round(r.dri.dri, 3),
+        })
+    for batch in _batched(rows):
+        conn.run_write(q.SET_COMPANY_SCORES, rows=batch)
+    return len(rows)
+
+
 def main():
     clear = "--clear" in sys.argv
     if not conn.ping():
@@ -75,6 +99,12 @@ def main():
     print(f"✅ Đã nạp: {stats['companies']} công ty, {stats['owners']} chủ sở hữu")
     for rel, n in stats["edges"].items():
         print(f"   {rel}: {n}")
+
+    if "--scores" in sys.argv:
+        print("\nChấm điểm & gắn vào Company node...")
+        n = enrich_scores()
+        print(f"✅ Đã gắn điểm cho {n} công ty")
+
     print("\nQuick check:")
     for row in conn.run_query(q.GRAPH_STATS):
         print(f"   {row}")

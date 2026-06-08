@@ -13,6 +13,26 @@ nếu Neo4j chưa chạy (demo không vỡ).
 from __future__ import annotations
 import os
 from functools import lru_cache
+from pathlib import Path
+
+# Tự nạp .env ở thư mục gốc repo nếu có (không bắt buộc python-dotenv).
+def _load_dotenv():
+    env_path = Path(__file__).parent.parent / ".env"
+    if not env_path.exists():
+        return
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(env_path)
+    except ImportError:
+        # Fallback parser tối giản nếu chưa cài python-dotenv
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            os.environ.setdefault(key.strip(), val.strip())
+
+_load_dotenv()
 
 NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
 # Aura dùng NEO4J_USERNAME; local/Docker dùng NEO4J_USER — hỗ trợ cả hai

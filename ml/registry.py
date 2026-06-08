@@ -26,6 +26,8 @@ _LGB_STRONG = dict(n_estimators=400, learning_rate=0.05, max_depth=6, num_leaves
 _LGB_SMALL = dict(n_estimators=200, learning_rate=0.04, max_depth=3, num_leaves=8,
                   min_child_samples=30, subsample=0.8, colsample_bytree=0.8,
                   reg_alpha=0.3, reg_lambda=2.0, random_state=SEED, verbose=-1)
+_CB_PARAMS = dict(iterations=400, learning_rate=0.05, depth=6, l2_leaf_reg=3.0,
+                  random_seed=SEED, verbose=0, allow_writing_files=False, nan_mode="Min")
 
 LINEAR_MODELS = {"ridge"}
 
@@ -38,10 +40,13 @@ def build(name: str):
         return lgb.LGBMRegressor(**_LGB_SMALL)
     if name == "ridge":
         return make_pipeline(SimpleImputer(strategy="median"), StandardScaler(), Ridge(alpha=10.0))
+    if name == "catboost":
+        from catboost import CatBoostRegressor
+        return CatBoostRegressor(**_CB_PARAMS)
     raise ValueError(f"Model không xác định: {name}")
 
 
-CANDIDATES = ["lgbm_strong", "lgbm_small", "ridge"]
+CANDIDATES = ["lgbm_strong", "lgbm_small", "ridge", "catboost"]
 
 
 def select_best(X, y, candidates=None, cv=5) -> tuple[str, float]:

@@ -721,25 +721,74 @@ def gen_layer3d_maturity(meta, avail):
 # ── Graph: relationships ──────────────────────────────────────────────────────
 
 def gen_graph(companies_list):
+    """
+    Sinh mạng lưới quan hệ doanh nghiệp — GIÀU liên kết để graph có giá trị phân tích:
+      • Chủ sở hữu dùng chung  → nhóm DN cùng một doanh nhân (business group)
+      • Đồng sở hữu            → một người góp vốn thêm vào DN khác (cổ đông chung)
+      • Đối tác thương mại     → chuỗi cung ứng dày, có DN "anchor" làm hub
+    Trên nền mạng hợp lệ đó mới gắn 3 mẫu quan hệ RỦI RO (sở hữu chéo ẩn ·
+    chung địa chỉ · giao dịch vòng) — để phát hiện bất thường có ý nghĩa.
+    """
     nodes = []
     edges = []
     n = len(companies_list)
+    msts = [c["mst"] for c in companies_list]
 
+    # ── Company nodes ─────────────────────────────────────────────────────────
     for c in companies_list:
-        nodes.append({"id": c["mst"], "type": "doanh_nghiep", "phan_khuc": c["phan_khuc"], "nganh": c["nganh_chinh"]})
-        owner_id = f"owner_{c['mst']}"
-        nodes.append({"id": owner_id, "type": "chu_so_huu", "ten": c["nguoi_dai_dien"]})
-        edges.append({"source": owner_id, "target": c["mst"], "type": "so_huu", "phan_tram": random.randint(51, 100)})
+        nodes.append({"id": c["mst"], "type": "doanh_nghiep",
+                      "phan_khuc": c["phan_khuc"], "nganh": c["nganh_chinh"]})
 
-    # Target: ~6% of total companies in fraud clusters (realistic Vietnamese MSME fraud rate)
+    # ── Chủ sở hữu dùng chung (business groups) ───────────────────────────────
+    # Pool doanh nhân "đa sở hữu": mỗi người có thể đứng tên nhiều DN.
+    n_shared = max(20, int(n * 0.06))
+    shared_owners = [f"owner_group_{k}" for k in range(n_shared)]
+    for oid in shared_owners:
+        nodes.append({"id": oid, "type": "chu_so_huu", "ten": gen_name(), "flag": "business_group"})
+
+    owner_companies: dict[str, list] = {}   # oid -> [msts] (thống kê business group)
+    for c in companies_list:
+        mst = c["mst"]
+        # ~35% DN có chủ thuộc nhóm dùng chung; còn lại chủ riêng
+        if random.random() < 0.35:
+            oid = random.choice(shared_owners)
+        else:
+            oid = f"owner_{mst}"
+            nodes.append({"id": oid, "type": "chu_so_huu", "ten": c["nguoi_dai_dien"]})
+        edges.append({"source": oid, "target": mst, "type": "so_huu",
+                      "phan_tram": random.randint(51, 100)})
+        owner_companies.setdefault(oid, []).append(mst)
+
+    # ── Đồng sở hữu: ~15% DN có thêm cổ đông từ pool chung → liên kết người-DN ──
+    for c in companies_list:
+        if shared_owners and random.random() < 0.15:
+            oid = random.choice(shared_owners)
+            edges.append({"source": oid, "target": c["mst"], "type": "so_huu",
+                          "phan_tram": random.randint(10, 40)})
+
+    # ── Mạng lưới đối tác thương mại (supply chain có anchor hub) ──────────────
+    medium = [c["mst"] for c in companies_list if c["phan_khuc"] == "Medium"]
+    anchors = random.sample(medium, min(40, len(medium))) if medium else []
+    trade_pairs: set = set()
+    for c in companies_list:
+        mst = c["mst"]
+        for _ in range(random.randint(1, 4)):
+            # 45% giao dịch với DN lớn (hub chuỗi cung ứng), còn lại ngẫu nhiên
+            partner = random.choice(anchors) if (anchors and random.random() < 0.45) else random.choice(msts)
+            key = (mst, partner)
+            if partner != mst and key not in trade_pairs:
+                trade_pairs.add(key)
+                edges.append({"source": mst, "target": partner, "type": "giao_dich_thuong_mai",
+                              "gia_tri_mn_vnd": round(random.uniform(10, 500), 0)})
+
+    # ── 3 mẫu quan hệ RỦI RO (trên nền mạng hợp lệ) ───────────────────────────
+    # Target: ~6% of total companies in risk clusters (realistic Vietnamese MSME rate)
     target_fraud_companies = max(10, int(n * 0.06))
-
-    # Pool: distressed companies, shuffle and take only what we need
     distressed = [c for c in companies_list if c.get("health", 0.5) < 0.25]
     random.shuffle(distressed)
     fraud_pool = distressed[:target_fraud_companies]
 
-    # Fraud pattern 1: shared controller — clusters of 2-4 companies
+    # Mẫu 1: sở hữu chéo ẩn — chủ ẩn nắm CHÉO (minority, không khai) 2-4 DN
     used = set()
     fraud_clusters = []
     i = 0
@@ -757,7 +806,7 @@ def gen_graph(companies_list):
             fraud_clusters.append(cluster_msts)
         i += size
 
-    # Fraud pattern 2: address sharing — pick 5-10 small shell groups from fraud pool
+    # Mẫu 2: chung địa chỉ — nhóm shell nhỏ
     shell_candidates = [c for c in fraud_pool if c["mst"] in used]
     n_shell_groups = min(10, len(shell_candidates) // 3)
     random.shuffle(shell_candidates)
@@ -768,7 +817,7 @@ def gen_graph(companies_list):
                 edges.append({"source": group[0]["mst"], "target": c["mst"],
                               "type": "cung_dia_chi", "flag": "possible_shell"})
 
-    # Fraud pattern 3: circular transactions — small ring among worst offenders
+    # Mẫu 3: giao dịch vòng — vòng khép kín giữa DN xấu nhất
     very_bad = [c for c in fraud_pool if c.get("health", 0.5) < 0.12][:8]
     for j in range(len(very_bad)):
         src = very_bad[j]["mst"]
@@ -778,18 +827,16 @@ def gen_graph(companies_list):
                           "flag": "circular_transaction",
                           "gia_tri_mn_vnd": round(random.uniform(50, 3000), 0)})
 
-    # Legitimate supply chain edges
-    msts = [c["mst"] for c in companies_list]
-    for _ in range(int(n * 0.15)):
-        src, tgt = random.sample(msts, 2)
-        edges.append({"source": src, "target": tgt, "type": "giao_dich_thuong_mai",
-                      "gia_tri_mn_vnd": round(random.uniform(10, 500), 0)})
+    # ── Thống kê độ giàu liên kết ─────────────────────────────────────────────
+    business_groups = {oid: ms for oid, ms in owner_companies.items()
+                       if oid.startswith("owner_group_") and len(ms) >= 2}
 
     return {
         "nodes": nodes,
         "edges": edges,
         "fraud_clusters": fraud_clusters,
         "fraud_edge_count": sum(1 for e in edges if e.get("flag")),
+        "business_groups": len(business_groups),
     }
 
 
@@ -946,7 +993,12 @@ def main(n_companies: int):
     print(f"  BCTC available  : {bctc_avail:.1%}")
     print(f"  E-Invoice avail : {inv_avail:.1%}")
 
-    print(f"\nGraph: {len(graph['nodes'])} nodes | {len(graph['edges'])} edges | {len(graph['fraud_clusters'])} fraud clusters")
+    edge_by_type = {}
+    for e in graph["edges"]:
+        edge_by_type[e["type"]] = edge_by_type.get(e["type"], 0) + 1
+    print(f"\nGraph: {len(graph['nodes'])} nodes | {len(graph['edges'])} edges | {len(graph['fraud_clusters'])} risk clusters")
+    print(f"  Edge types: {edge_by_type}")
+    print(f"  Business groups (chủ chung ≥2 DN): {graph['business_groups']}")
     print(f"\nDone. All files in: {OUTPUT_DIR}")
 
 

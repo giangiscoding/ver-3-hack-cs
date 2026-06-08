@@ -107,7 +107,7 @@ credit_scoring/
 | [docs/07_ml_cluster.md](docs/07_ml_cluster.md) | `scorer/`, `ml/` | DQI · cluster · stacked blend · SHAP | ✅ Xong |
 | [docs/04_dri.md](docs/04_dri.md) | `scorer/dri.py` | DRI 4 thành phần | ✅ Xong |
 | [docs/05_rating.md](docs/05_rating.md) | `scorer/rating.py` | Master scale · hard stops · LTV | ✅ Xong |
-| [docs/03_graph.md](docs/03_graph.md) | `graph/` | Neo4j · Cypher · 3 fraud patterns | ✅ Code (cần Neo4j chạy) |
+| [docs/03_graph.md](docs/03_graph.md) | `graph/` | Neo4j · Cypher · 3 fraud patterns | ✅ Verify online (Aura) |
 | [docs/06_ui.md](docs/06_ui.md) | `app/` | Streamlit · graph view | 🔨 Spec |
 | [Credit_Scorecard_SME_3Layers-1.md](Credit_Scorecard_SME_3Layers-1.md) | — | Scorecard spec gốc | ✅ Tham chiếu |
 
@@ -127,13 +127,15 @@ credit_scoring/
 [✅] Thực nghiệm so sánh global/router/blend
 [✅] Graph fraud detection — Neo4j + Cypher (shadow controller · shell · circular)
 
+[✅] Graph verify online — Neo4j Aura: nạp 5000 DN + 6078 quan hệ, fraud detect chạy thật
+
 [ ]  Streamlit UI
 [ ]  PDF/XML parsers (upload thật)
-[!]  Lưu ý: Neo4j cần Java/Docker hoặc Aura — máy dev hiện chưa chạy được để verify online
 ```
 
-> **Trạng thái graph:** code + Cypher hoàn chỉnh, offline shaping đã test. Chưa verify
-> online vì máy dev không có Java/Docker. Cần `docker compose up -d` (hoặc Aura) để chạy thật.
+> **Trạng thái graph:** ✅ Đã verify online trên Neo4j Aura. `graph/connection.py` tự nạp
+> `.env` (copy từ `.env.example`). Nạp dữ liệu: `python -m graph.loader --clear`; kiểm tra:
+> `python -m graph.smoke_test`.
 
 ---
 
@@ -184,7 +186,7 @@ streamlit run app/main.py
 | Phân bổ Micro / Small / Medium | 2.481 / 1.713 / 806 |
 | CIC / BCTC / E-Invoice có dữ liệu | 72.3% / 54.8% / 90.7% |
 | Cluster FULL / NO_CIC / NO_BCTC / L3_ONLY | ~1970 / 772 / 1214 / 1044 |
-| Graph | 10.096 nodes · 6.078 edges · ~6% fraud |
+| Graph | 8.712 nodes · 18.546 edges · 297 business group · bậc TB 3.7 · ~6% rủi ro |
 
 **Phân phối rating (qua engine, credit pyramid thực tế):**
 
